@@ -1,0 +1,1013 @@
+.MODEL SMALL
+ 
+.STACK 100H
+
+.DATA
+; ============ MOVIE DATA ============
+MOVIE_COUNT EQU 6
+MOVIE1 DB 'Inception', '$'
+MOVIE2 DB 'Avatar', '$'
+MOVIE3 DB 'Interstellar', '$'
+MOVIE4 DB 'The Matrix', '$'
+MOVIE5 DB 'Dune', '$'
+MOVIE6 DB 'Oppenheimer', '$'
+
+; Movie prices array
+PRICES DW 150, 200, 180, 170, 190, 200
+
+; ============ HALL AND TIME DATA ============
+HALL_COUNT EQU 3
+TIME_SLOTS EQU 3
+
+; Hall assignments for each movie (1-3)
+MOVIE_HALLS DB 1, 2, 3, 1, 2, 3
+
+; Time slots: 0=Morning(10AM), 1=Afternoon(3PM), 2=Evening(7PM)
+MOVIE_TIMES DB 0, 1, 2, 1, 0, 2
+
+TIME_10AM DB '10:00 AM', '$'
+TIME_3PM DB '03:00 PM', '$'
+TIME_7PM DB '07:00 PM', '$'
+
+; ============ SEATING DATA ============
+ROWS EQU 5
+COLS EQU 6
+TOTAL_SEATS EQU 30
+
+; Seating arrays for each hall (0 = available, 1 = booked)
+HALL1_SEATS DB TOTAL_SEATS DUP(0)
+HALL2_SEATS DB TOTAL_SEATS DUP(0)
+HALL3_SEATS DB TOTAL_SEATS DUP(0)
+
+; ============ BOOKING HISTORY ============
+MAX_BOOKINGS EQU 10
+MAX_NAME_LEN EQU 20
+
+; Structure: Each booking stores seat number, hall, time, movie, name
+BOOKING_SEATS DW MAX_BOOKINGS DUP(0)
+BOOKING_HALLS DB MAX_BOOKINGS DUP(0)
+BOOKING_TIMES DB MAX_BOOKINGS DUP(0)
+BOOKING_MOVIES DB MAX_BOOKINGS DUP(0)
+BOOKING_NAMES DB MAX_BOOKINGS * MAX_NAME_LEN DUP('$')
+BOOKING_COUNT DW 0
+
+; ============ MESSAGES ============
+MSG_WELCOME DB 13,10,'===== MOVIE TICKET BOOKING SYSTEM =====',13,10,'$'
+MSG_MENU1 DB 13,10,'1. Select Movie & Book Seat',13,10,'$'
+MSG_MENU2 DB '2. View Available Seats',13,10,'$'
+MSG_MENU3 DB '3. View Booking History',13,10,'$'
+MSG_MENU4 DB '4. Cancel Booking by Name',13,10,'$'
+MSG_MENU5 DB '5. Exit',13,10,'$'
+MSG_CHOOSE DB 'Choose option: $'
+
+MSG_MOVIES DB 13,10,'Available Movies:',13,10,'$'
+MSG_MOVIE1 DB '1. Inception - 150 Tk [Hall 1, 10:00 AM]',13,10,'$'
+MSG_MOVIE2 DB '2. Avatar - 200 Tk [Hall 2, 03:00 PM]',13,10,'$'
+MSG_MOVIE3 DB '3. Interstellar - 180 Tk [Hall 3, 07:00 PM]',13,10,'$'
+MSG_MOVIE4 DB '4. The Matrix - 170 Tk [Hall 1, 03:00 PM]',13,10,'$'
+MSG_MOVIE5 DB '5. Dune - 190 Tk [Hall 2, 10:00 AM]',13,10,'$'
+MSG_MOVIE6 DB '6. Oppenheimer - 200 Tk [Hall 3, 07:00 PM]',13,10,'$'
+MSG_SELECT DB 'Select movie (1-6): $'
+MSG_VIEW_WHICH DB 'Select movie to view seats (1-6): $'
+
+MSG_HALL DB 13,10,'=== HALL $'
+MSG_TIME DB ' - Time: $'
+MSG_SEAT_MAP DB ' ===',13,10,'Seating Layout (0=Available, X=Booked):',13,10,'$'
+MSG_ROW DB 13,10,'Row $'
+MSG_ENTER_SEAT DB 13,10,'Enter seat number (1-30): $'
+MSG_ENTER_NAME DB 13,10,'Enter your name: $'
+MSG_INVALID DB 13,10,'Invalid choice!',13,10,'$'
+MSG_BOOKED DB 13,10,'Seat already booked!',13,10,'$'
+MSG_SUCCESS DB 13,10,'Booking successful!',13,10,'$'
+MSG_TOTAL DB 13,10,'Total Price: $'
+MSG_TK DB ' Tk',13,10,'$'
+MSG_BOOKING_INFO DB 13,10,'Booking Details:',13,10,'$'
+MSG_NAME_LBL DB 'Name: $'
+MSG_MOVIE_LBL DB 'Movie: $'
+MSG_SEAT_LBL DB 'Seat: $'
+MSG_HALL_LBL DB 'Hall: $'
+MSG_TIME_LBL DB 'Time: $'
+
+MSG_HISTORY DB 13,10,'===== BOOKING HISTORY =====',13,10,'$'
+MSG_EMPTY DB 13,10,'No bookings yet!',13,10,'$'
+MSG_CANCELLED DB 13,10,'Booking cancelled successfully!',13,10,'$'
+MSG_NO_CANCEL DB 13,10,'No booking found with that name!',13,10,'$'
+MSG_CANCEL_NAME DB 13,10,'Enter name to cancel booking: $'
+
+; ============ VARIABLES ============
+SELECTED_MOVIE DB 0
+SELECTED_HALL DB 0
+SELECTED_TIME DB 0
+TEMP_NUM DW 0
+TEMP_NAME DB MAX_NAME_LEN DUP('$')
+NEWLINE DB 13,10,'$'
+SPACE DB ' $'
+
+.CODE
+
+; ============ MACRO DEFINITIONS ============
+PRINT MACRO MSG
+    PUSH AX
+    PUSH DX
+    LEA DX, MSG
+    MOV AH, 09H
+    INT 21H
+    POP DX
+    POP AX
+ENDM
+
+PRINT_CHAR MACRO CHAR
+    PUSH AX
+    PUSH DX
+    MOV DL, CHAR
+    MOV AH, 02H
+    INT 21H
+    POP DX
+    POP AX
+ENDM
+
+READ_CHAR MACRO
+    MOV AH, 01H
+    INT 21H
+ENDM
+
+; ============ MAIN PROCEDURE ============
+MAIN PROC
+    MOV AX, @DATA
+    MOV DS, AX
+ 
+MAIN_LOOP:
+    PRINT MSG_WELCOME
+    PRINT MSG_MENU1
+    PRINT MSG_MENU2
+    PRINT MSG_MENU3
+    PRINT MSG_MENU4
+    PRINT MSG_MENU5
+    PRINT MSG_CHOOSE
+    
+    READ_CHAR
+    SUB AL, '0'
+    
+    CMP AL, 1
+    JE OPTION_BOOK
+    CMP AL, 2
+    JE OPTION_VIEW_SEATS
+    CMP AL, 3
+    JE OPTION_VIEW_HISTORY
+    CMP AL, 4
+    JE OPTION_CANCEL
+    CMP AL, 5
+    JE EXIT_PROGRAM
+    
+    PRINT MSG_INVALID
+    JMP MAIN_LOOP
+
+OPTION_BOOK:
+    CALL SELECT_AND_BOOK_PROC
+    JMP MAIN_LOOP
+
+OPTION_VIEW_SEATS:
+    CALL VIEW_SEATS_BY_MOVIE_PROC
+    JMP MAIN_LOOP
+
+OPTION_VIEW_HISTORY:
+    CALL VIEW_HISTORY_PROC
+    JMP MAIN_LOOP
+
+OPTION_CANCEL:
+    CALL CANCEL_BY_NAME_PROC
+    JMP MAIN_LOOP
+
+EXIT_PROGRAM:
+    MOV AX, 4C00H
+    INT 21H
+MAIN ENDP
+
+; ============ SELECT MOVIE AND BOOK ============
+SELECT_AND_BOOK_PROC PROC
+    PUSH AX
+    PUSH BX
+    
+    PRINT MSG_MOVIES
+    PRINT MSG_MOVIE1
+    PRINT MSG_MOVIE2
+    PRINT MSG_MOVIE3
+    PRINT MSG_MOVIE4
+    PRINT MSG_MOVIE5
+    PRINT MSG_MOVIE6
+    PRINT MSG_SELECT
+    
+    READ_CHAR
+    SUB AL, '0'
+    
+    CMP AL, 1
+    JL INVALID_MOVIE_SEL
+    CMP AL, MOVIE_COUNT
+    JG INVALID_MOVIE_SEL
+    
+    MOV SELECTED_MOVIE, AL
+    
+    ; Get hall and time for this movie
+    DEC AL
+    MOV BL, AL
+    MOV BH, 0
+    LEA SI, MOVIE_HALLS
+    ADD SI, BX
+    MOV AL, [SI]
+    MOV SELECTED_HALL, AL
+    
+    LEA SI, MOVIE_TIMES
+    ADD SI, BX
+    MOV AL, [SI]
+    MOV SELECTED_TIME, AL
+    
+    ; Show seats for this hall
+    CALL DISPLAY_HALL_SEATS_PROC
+    
+    ; Book the seat
+    CALL BOOK_SEAT_PROC
+    JMP DONE_SELECT
+
+INVALID_MOVIE_SEL:
+    PRINT MSG_INVALID
+
+DONE_SELECT:
+    POP BX
+    POP AX
+    RET
+SELECT_AND_BOOK_PROC ENDP
+
+; ============ VIEW SEATS BY MOVIE ============
+VIEW_SEATS_BY_MOVIE_PROC PROC
+    PUSH AX
+    PUSH BX
+    
+    PRINT MSG_MOVIES
+    PRINT MSG_MOVIE1
+    PRINT MSG_MOVIE2
+    PRINT MSG_MOVIE3
+    PRINT MSG_MOVIE4
+    PRINT MSG_MOVIE5
+    PRINT MSG_MOVIE6
+    PRINT MSG_VIEW_WHICH
+    
+    READ_CHAR
+    SUB AL, '0'
+    
+    CMP AL, 1
+    JL INVALID_VIEW_SEL
+    CMP AL, MOVIE_COUNT
+    JG INVALID_VIEW_SEL
+    
+    MOV SELECTED_MOVIE, AL
+    
+    ; Get hall and time for this movie
+    DEC AL
+    MOV BL, AL
+    MOV BH, 0
+    LEA SI, MOVIE_HALLS
+    ADD SI, BX
+    MOV AL, [SI]
+    MOV SELECTED_HALL, AL
+    
+    LEA SI, MOVIE_TIMES
+    ADD SI, BX
+    MOV AL, [SI]
+    MOV SELECTED_TIME, AL
+    
+    ; Show seats for this hall
+    CALL DISPLAY_HALL_SEATS_PROC
+    JMP DONE_VIEW
+
+INVALID_VIEW_SEL:
+    PRINT MSG_INVALID
+
+DONE_VIEW:
+    POP BX
+    POP AX
+    RET
+VIEW_SEATS_BY_MOVIE_PROC ENDP
+
+; ============ DISPLAY SEATS FOR A HALL ============
+DISPLAY_HALL_SEATS_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    
+    ; Print hall header
+    PRINT MSG_HALL
+    MOV AL, SELECTED_HALL
+    ADD AL, '0'
+    PRINT_CHAR AL
+    
+    PRINT MSG_TIME
+    CALL PRINT_TIME_PROC
+    
+    PRINT MSG_SEAT_MAP
+    
+    ; Get seat array base for this hall
+    CALL GET_SEAT_ARRAY_PROC
+    MOV DI, SI
+    
+    MOV SI, 0
+    MOV CX, ROWS
+    
+DISPLAY_ROW:
+    PUSH CX
+    PRINT MSG_ROW
+    
+    MOV AX, ROWS
+    SUB AX, CX
+    INC AX
+    ADD AL, '0'
+    PRINT_CHAR AL
+    PRINT_CHAR ':'
+    PRINT_CHAR ' '
+    
+    MOV CX, COLS
+    
+DISPLAY_COL:
+    MOV BX, SI
+    ADD BX, DI
+    MOV AL, [BX]
+    CMP AL, 0
+    JE SEAT_AVAIL
+    
+    PRINT_CHAR 'X'
+    JMP NEXT_SEAT_DISP
+
+SEAT_AVAIL:
+    PRINT_CHAR '0'
+
+NEXT_SEAT_DISP:
+    PRINT_CHAR ' '
+    INC SI
+    LOOP DISPLAY_COL
+    
+    POP CX
+    LOOP DISPLAY_ROW
+    
+    PRINT NEWLINE
+    
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+DISPLAY_HALL_SEATS_PROC ENDP
+
+; ============ BOOK SEAT ============
+BOOK_SEAT_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    
+    PRINT MSG_ENTER_SEAT
+    CALL READ_NUMBER_PROC
+    MOV BX, TEMP_NUM
+    
+    CMP BX, 1
+    JL INVALID_SEAT
+    CMP BX, TOTAL_SEATS
+    JG INVALID_SEAT
+    
+    DEC BX
+    
+    ; Get seat array for selected hall
+    CALL GET_SEAT_ARRAY_PROC
+    ADD SI, BX
+    MOV AL, [SI]
+    CMP AL, 1
+    JE SEAT_TAKEN
+    
+    ; Mark seat as booked
+    MOV BYTE PTR [SI], 1
+    
+    ; Get name
+    PRINT MSG_ENTER_NAME
+    CALL READ_STRING_PROC
+    
+    ; Add to booking history
+    INC BX
+    CALL ADD_BOOKING_PROC
+    
+    ; Show booking confirmation
+    PRINT MSG_SUCCESS
+    CALL SHOW_BOOKING_DETAILS_PROC
+    CALL CALCULATE_PRICE_PROC
+    JMP BOOK_DONE_OK
+
+INVALID_SEAT:
+    PRINT MSG_INVALID
+    JMP BOOK_DONE_OK
+
+SEAT_TAKEN:
+    PRINT MSG_BOOKED
+
+BOOK_DONE_OK:
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+BOOK_SEAT_PROC ENDP
+
+; ============ GET SEAT ARRAY FOR HALL ============
+GET_SEAT_ARRAY_PROC PROC
+    PUSH AX
+    
+    MOV AL, SELECTED_HALL
+    CMP AL, 1
+    JE HALL_1
+    CMP AL, 2
+    JE HALL_2
+    CMP AL, 3
+    JE HALL_3
+    
+HALL_1:
+    LEA SI, HALL1_SEATS
+    JMP GET_ARRAY_DONE
+HALL_2:
+    LEA SI, HALL2_SEATS
+    JMP GET_ARRAY_DONE
+HALL_3:
+    LEA SI, HALL3_SEATS
+
+GET_ARRAY_DONE:
+    POP AX
+    RET
+GET_SEAT_ARRAY_PROC ENDP
+
+; ============ ADD BOOKING TO HISTORY ============
+ADD_BOOKING_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    PUSH DI
+    
+    MOV SI, BOOKING_COUNT
+    CMP SI, MAX_BOOKINGS
+    JGE ADD_FULL
+    
+    ; Save seat number
+    SHL SI, 1
+    LEA DI, BOOKING_SEATS
+    ADD DI, SI
+    MOV [DI], BX
+    SHR SI, 1
+    
+    ; Save hall
+    LEA DI, BOOKING_HALLS
+    ADD DI, SI
+    MOV AL, SELECTED_HALL
+    MOV [DI], AL
+    
+    ; Save time
+    LEA DI, BOOKING_TIMES
+    ADD DI, SI
+    MOV AL, SELECTED_TIME
+    MOV [DI], AL
+    
+    ; Save movie
+    LEA DI, BOOKING_MOVIES
+    ADD DI, SI
+    MOV AL, SELECTED_MOVIE
+    MOV [DI], AL
+    
+    ; Save name
+    MOV AX, MAX_NAME_LEN
+    MUL SI
+    LEA DI, BOOKING_NAMES
+    ADD DI, AX
+    LEA SI, TEMP_NAME
+    MOV CX, MAX_NAME_LEN
+COPY_NAME:
+    MOV AL, [SI]
+    MOV [DI], AL
+    INC SI
+    INC DI
+    LOOP COPY_NAME
+    
+    INC BOOKING_COUNT
+
+ADD_FULL:
+    POP DI
+    POP SI
+    POP CX
+    POP BX
+    POP AX
+    RET
+ADD_BOOKING_PROC ENDP
+
+; ============ SHOW BOOKING DETAILS ============
+SHOW_BOOKING_DETAILS_PROC PROC
+    PUSH AX
+    
+    PRINT MSG_BOOKING_INFO
+    PRINT MSG_NAME_LBL
+    LEA DX, TEMP_NAME
+    MOV AH, 09H
+    INT 21H
+    PRINT NEWLINE
+    
+    POP AX
+    RET
+SHOW_BOOKING_DETAILS_PROC ENDP
+
+; ============ VIEW BOOKING HISTORY ============
+VIEW_HISTORY_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    PUSH DI
+    
+    PRINT MSG_HISTORY
+    
+    MOV CX, BOOKING_COUNT
+    CMP CX, 0
+    JE NO_HISTORY
+    
+    MOV SI, 0
+
+PRINT_BOOKING:
+    PUSH CX
+    PUSH SI
+    
+    ; Print name
+    MOV AX, MAX_NAME_LEN
+    MUL SI
+    LEA DI, BOOKING_NAMES
+    ADD DI, AX
+    MOV DX, DI
+    MOV AH, 09H
+    INT 21H
+    
+    PRINT SPACE
+    PRINT MSG_SEAT_LBL
+    
+    ; Print seat
+    POP SI
+    PUSH SI
+    MOV BX, SI
+    SHL BX, 1
+    LEA DI, BOOKING_SEATS
+    ADD DI, BX
+    MOV AX, [DI]
+    CALL PRINT_NUMBER_PROC
+    
+    PRINT SPACE
+    PRINT MSG_MOVIE_LBL
+    
+    ; Print movie name
+    POP SI
+    PUSH SI
+    LEA DI, BOOKING_MOVIES
+    ADD DI, SI
+    MOV AL, [DI]
+    CALL PRINT_MOVIE_NAME_PROC
+    
+    PRINT SPACE
+    PRINT MSG_HALL_LBL
+    
+    ; Print hall
+    POP SI
+    PUSH SI
+    LEA DI, BOOKING_HALLS
+    ADD DI, SI
+    MOV AL, [DI]
+    ADD AL, '0'
+    PRINT_CHAR AL
+    
+    PRINT SPACE
+    PRINT MSG_TIME_LBL
+    
+    ; Print time
+    POP SI
+    PUSH SI
+    LEA DI, BOOKING_TIMES
+    ADD DI, SI
+    MOV AL, [DI]
+    MOV SELECTED_TIME, AL
+    CALL PRINT_TIME_PROC
+    
+    PRINT NEWLINE
+    
+    POP SI
+    INC SI
+    POP CX
+    LOOP PRINT_BOOKING
+    
+    JMP HISTORY_DONE
+
+NO_HISTORY:
+    PRINT MSG_EMPTY
+
+HISTORY_DONE:
+    POP DI
+    POP SI
+    POP CX
+    POP BX
+    POP AX
+    RET
+VIEW_HISTORY_PROC ENDP
+
+; ============ CANCEL BOOKING BY NAME ============
+CANCEL_BY_NAME_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    PUSH DI
+    
+    MOV CX, BOOKING_COUNT
+    CMP CX, 0
+    JE NO_BOOKINGS_CANCEL
+    
+    PRINT MSG_CANCEL_NAME
+    CALL READ_STRING_PROC
+    
+    ; Search for name
+    MOV SI, 0
+SEARCH_NAME:
+    PUSH SI
+    MOV AX, MAX_NAME_LEN
+    MUL SI
+    LEA DI, BOOKING_NAMES
+    ADD DI, AX
+    
+    LEA SI, TEMP_NAME
+    MOV CX, MAX_NAME_LEN
+    
+COMPARE_LOOP:
+    MOV AL, [SI]
+    MOV BL, [DI]
+    CMP AL, BL
+    JNE NOT_MATCH
+    CMP AL, '$'
+    JE FOUND_NAME
+    INC SI
+    INC DI
+    LOOP COMPARE_LOOP
+    
+FOUND_NAME:
+    POP SI
+    JMP DO_CANCEL
+
+NOT_MATCH:
+    POP SI
+    INC SI
+    MOV AX, SI
+    CMP AX, BOOKING_COUNT
+    JL SEARCH_NAME
+    
+    PRINT MSG_NO_CANCEL
+    JMP CANCEL_DONE_PROC
+
+DO_CANCEL:
+    ; Free the seat
+    PUSH SI
+    LEA DI, BOOKING_HALLS
+    ADD DI, SI
+    MOV AL, [DI]
+    MOV SELECTED_HALL, AL
+    
+    CALL GET_SEAT_ARRAY_PROC
+    POP DI
+    PUSH DI
+    MOV BX, DI
+    SHL BX, 1
+    LEA DI, BOOKING_SEATS
+    ADD BX, DI
+    MOV AX, [BX]
+    DEC AX
+    ADD SI, AX
+    MOV BYTE PTR [SI], 0
+    
+    ; Remove from history
+    POP SI
+    CALL REMOVE_BOOKING_PROC
+    
+    PRINT MSG_CANCELLED
+    JMP CANCEL_DONE_PROC
+
+NO_BOOKINGS_CANCEL:
+    PRINT MSG_NO_CANCEL
+
+CANCEL_DONE_PROC:
+    POP DI
+    POP SI
+    POP CX
+    POP BX
+    POP AX
+    RET
+CANCEL_BY_NAME_PROC ENDP
+
+; ============ REMOVE BOOKING FROM ARRAY ============
+REMOVE_BOOKING_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    PUSH DI
+    
+    MOV BX, SI
+    MOV CX, BOOKING_COUNT
+    DEC CX
+    SUB CX, SI
+    CMP CX, 0
+    JLE REMOVE_LAST
+    
+    ; Shift remaining bookings
+SHIFT_LOOP:
+    PUSH CX
+    
+    ; Shift seats
+    MOV SI, BX
+    INC SI
+    SHL SI, 1
+    LEA DI, BOOKING_SEATS
+    ADD DI, SI
+    MOV AX, [DI]
+    SUB DI, 2
+    MOV [DI], AX
+    
+    ; Shift halls
+    MOV SI, BX
+    INC SI
+    LEA DI, BOOKING_HALLS
+    ADD DI, SI
+    MOV AL, [DI]
+    DEC DI
+    MOV [DI], AL
+    
+    ; Shift times
+    MOV SI, BX
+    INC SI
+    LEA DI, BOOKING_TIMES
+    ADD DI, SI
+    MOV AL, [DI]
+    DEC DI
+    MOV [DI], AL
+    
+    ; Shift movies
+    MOV SI, BX
+    INC SI
+    LEA DI, BOOKING_MOVIES
+    ADD DI, SI
+    MOV AL, [DI]
+    DEC DI
+    MOV [DI], AL
+    
+    ; Shift names
+    MOV AX, MAX_NAME_LEN
+    MOV SI, BX
+    INC SI
+    MUL SI
+    LEA DI, BOOKING_NAMES
+    ADD DI, AX
+    SUB AX, MAX_NAME_LEN
+    LEA SI, BOOKING_NAMES
+    ADD SI, AX
+    MOV CX, MAX_NAME_LEN
+SHIFT_NAME:
+    MOV AL, [DI]
+    MOV [SI], AL
+    INC SI
+    INC DI
+    LOOP SHIFT_NAME
+    
+    INC BX
+    POP CX
+    LOOP SHIFT_LOOP
+
+REMOVE_LAST:
+    DEC BOOKING_COUNT
+    
+    POP DI
+    POP SI
+    POP CX
+    POP BX
+    POP AX
+    RET
+REMOVE_BOOKING_PROC ENDP
+
+; ============ PRINT TIME ============
+PRINT_TIME_PROC PROC
+    PUSH AX
+    PUSH DX
+    
+    MOV AL, SELECTED_TIME
+    CMP AL, 0
+    JE TIME_MORNING
+    CMP AL, 1
+    JE TIME_AFTERNOON
+    CMP AL, 2
+    JE TIME_EVENING
+    
+TIME_MORNING:
+    LEA DX, TIME_10AM
+    JMP PRINT_TIME_STR
+TIME_AFTERNOON:
+    LEA DX, TIME_3PM
+    JMP PRINT_TIME_STR
+TIME_EVENING:
+    LEA DX, TIME_7PM
+
+PRINT_TIME_STR:
+    MOV AH, 09H
+    INT 21H
+    
+    POP DX
+    POP AX
+    RET
+PRINT_TIME_PROC ENDP
+
+; ============ PRINT MOVIE NAME ============
+PRINT_MOVIE_NAME_PROC PROC
+    PUSH AX
+    PUSH DX
+    
+    CMP AL, 1
+    JE MOVIE_NAME_1
+    CMP AL, 2
+    JE MOVIE_NAME_2
+    CMP AL, 3
+    JE MOVIE_NAME_3
+    CMP AL, 4
+    JE MOVIE_NAME_4
+    CMP AL, 5
+    JE MOVIE_NAME_5
+    CMP AL, 6
+    JE MOVIE_NAME_6
+    
+MOVIE_NAME_1:
+    LEA DX, MOVIE1
+    JMP PRINT_MOVIE_STR
+MOVIE_NAME_2:
+    LEA DX, MOVIE2
+    JMP PRINT_MOVIE_STR
+MOVIE_NAME_3:
+    LEA DX, MOVIE3
+    JMP PRINT_MOVIE_STR
+MOVIE_NAME_4:
+    LEA DX, MOVIE4
+    JMP PRINT_MOVIE_STR
+MOVIE_NAME_5:
+    LEA DX, MOVIE5
+    JMP PRINT_MOVIE_STR
+MOVIE_NAME_6:
+    LEA DX, MOVIE6
+
+PRINT_MOVIE_STR:
+    MOV AH, 09H
+    INT 21H
+    
+    POP DX
+    POP AX
+    RET
+PRINT_MOVIE_NAME_PROC ENDP
+
+; ============ CALCULATE PRICE ============
+CALCULATE_PRICE_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH DX
+    PUSH SI
+    
+    PRINT MSG_TOTAL
+    
+    MOV AL, SELECTED_MOVIE
+    DEC AL
+    MOV BL, 2
+    MUL BL
+    LEA SI, PRICES
+    ADD SI, AX
+    MOV AX, [SI]
+    
+    CALL PRINT_NUMBER_PROC
+    PRINT MSG_TK
+    
+    POP SI
+    POP DX
+    POP BX
+    POP AX
+    RET
+CALCULATE_PRICE_PROC ENDP
+
+; ============ READ STRING ============
+READ_STRING_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH SI
+    
+    LEA SI, TEMP_NAME
+    MOV CX, MAX_NAME_LEN
+    
+CLEAR_NAME:
+    MOV BYTE PTR [SI], '$'
+    INC SI
+    LOOP CLEAR_NAME
+    
+    LEA SI, TEMP_NAME
+    MOV CX, 0
+
+READ_STR_LOOP:
+    READ_CHAR
+    CMP AL, 13
+    JE READ_STR_DONE
+    CMP CX, MAX_NAME_LEN - 1
+    JGE READ_STR_LOOP
+    
+    MOV [SI], AL
+    INC SI
+    INC CX
+    JMP READ_STR_LOOP
+
+READ_STR_DONE:
+    MOV BYTE PTR [SI], '$'
+    
+    POP SI
+    POP CX
+    POP BX
+    POP AX
+    RET
+READ_STRING_PROC ENDP
+
+; ============ READ NUMBER ============
+READ_NUMBER_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    
+    MOV BX, 0
+    MOV CX, 10
+
+READ_DIGIT:
+    READ_CHAR
+    CMP AL, 13
+    JE READ_NUM_DONE
+    
+    SUB AL, '0'
+    CMP AL, 0
+    JL READ_NUM_DONE
+    CMP AL, 9
+    JG READ_NUM_DONE
+    
+    MOV AH, 0
+    PUSH AX
+    MOV AX, BX
+    MUL CX
+    MOV BX, AX
+    POP AX
+    ADD BX, AX
+    JMP READ_DIGIT
+
+READ_NUM_DONE:
+    MOV TEMP_NUM, BX
+    
+    POP CX
+    POP BX
+    POP AX
+    RET
+READ_NUMBER_PROC ENDP
+
+; ============ PRINT NUMBER ============
+PRINT_NUMBER_PROC PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    
+    MOV BX, 10
+    MOV CX, 0
+
+DIVIDE_LOOP:
+    MOV DX, 0
+    DIV BX
+    PUSH DX
+    INC CX
+    CMP AX, 0
+    JNE DIVIDE_LOOP
+
+PRINT_LOOP:
+    POP DX
+    ADD DL, '0'
+    MOV AH, 02H
+    INT 21H
+    LOOP PRINT_LOOP
+    
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+PRINT_NUMBER_PROC ENDP
+
+    END MAIN
