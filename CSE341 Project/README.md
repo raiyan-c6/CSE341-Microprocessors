@@ -92,7 +92,7 @@ This project is open-source and available for educational purposes.
 
 ## 👨‍💻 Author
 
-**[Raiyan Rahman]**
+**Raiyan Rahman**
 
-- **University**: [BRAC University]
-- **Course**: CSE341: Microprocessors
+**University**: BRAC University
+**Course**: CSE341: Microprocessors
